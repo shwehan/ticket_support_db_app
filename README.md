@@ -1,90 +1,235 @@
-# Lakebase Support App — Day 1 Homework
+# Lakebase Support Desk
 
-A deployable Flask app for the Databricks AI Bootcamp homework. It uses the same Lakebase secret convention as the Day 1 boilerplate and stores every ticket and message in Lakebase (Postgres).
+Lakebase Support Desk is a small operational support-ticket application built for Databricks Apps. It provides a clean interface for creating tickets, following conversations, and managing ticket status while storing all application data in Databricks Lakebase.
 
-## Included requirements
+The project is intentionally compact: a Flask server renders the interface, parameterized SQL handles application queries, and PostgreSQL constraints protect the data model.
 
-- Related `tickets` and `ticket_messages` tables with a foreign key
-- Three seed tickets and two messages per ticket
-- View/filter tickets, view messages, create tickets, add messages, and update status
-- Bonus: priority, validation, error messages, status filters, statistics, and responsive styling
-- Parameterized SQL for user-provided values
+## Features
 
-## Fastest setup if Day 1 already works
+- View all support tickets and their message counts
+- Filter tickets by `open`, `in_progress`, or `resolved`
+- Open a ticket to read its full conversation history
+- Create tickets with title, creator, and priority
+- Add messages to existing tickets
+- Update ticket status
+- Display total and status-level ticket statistics
+- Validate required fields and accepted status/priority values
+- Preserve records across refreshes and application deployments
+- Seed a demonstration dataset when the database is initially empty
+- Adapt the interface to desktop and mobile screen sizes
 
-1. Create a new GitHub repository and add this folder's files. Do **not** add `.env` or credentials.
-2. In Databricks, create a Git folder pointing to your new repository.
-3. Confirm the secret used by Day 1 still exists: scope `database`, key `lakebase-url`. Its value should be the full Lakebase Postgres URL.
-4. Ensure the app's service principal can read that secret. If you used the same process as Day 1, repeat the secret permission step for this new app identity.
-5. Go to **Compute → Apps → Create app → Custom**, select the Git folder containing `app.py` and `app.yaml`, and deploy.
-6. Open the app. On first startup it creates the schema and inserts sample data only if `tickets` is empty.
+## Architecture
 
-If your Day 1 app used a different scope or key, change the two values in `app.yaml`—not the secret itself.
+```mermaid
+flowchart LR
+    U["Support user"] -->|HTTPS| A["Databricks App"]
+    subgraph APP["Flask application"]
+        A --> R["Routes and validation"]
+        R --> T["Jinja templates"]
+        R --> D["Lakebase connection helper"]
+    end
+    D -->|"Parameterized SQL over SSL"| L[("Databricks Lakebase")]
+    S["Databricks secret"] -. "Connection URL at runtime" .-> D
+```
 
-## New Lakebase setup (only if you cannot reuse Day 1)
+The browser communicates with a Flask application hosted by Databricks Apps. Flask validates each request and executes parameterized SQL against Lakebase. The database connection URL is resolved from a Databricks secret at runtime and is never stored in the repository.
 
-1. In **Catalog → Lakebase**, create or open a database instance.
-2. Create a native/password role and copy its Postgres connection URL. The URL normally ends with `?sslmode=require`.
-3. Store the full URL in a Databricks secret with scope `database` and key `lakebase-url`, following your Day 1 `setup_secrets.py` workflow.
-4. Grant the deployed app identity permission to read the secret and connect to the database.
-5. Deploy using the steps above.
+## Data model
 
-Never commit the connection URL, password, `.env`, API keys, or tokens.
+```mermaid
+erDiagram
+    TICKETS ||--o{ TICKET_MESSAGES : contains
+    TICKETS {
+        bigint ticket_id PK
+        varchar title
+        varchar status
+        varchar priority
+        varchar created_by
+        timestamptz created_at
+    }
+    TICKET_MESSAGES {
+        bigint message_id PK
+        bigint ticket_id FK
+        text message_text
+        varchar author
+        timestamptz created_at
+    }
+```
 
-## Local development (optional)
+Each message belongs to exactly one ticket through `ticket_messages.ticket_id`. The foreign key prevents orphaned messages, while `ON DELETE CASCADE` keeps related records consistent if ticket deletion is added later. Check constraints restrict status and priority to the values supported by the interface.
+
+## Request flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant App as Flask app
+    participant DB as Lakebase
+    User->>App: Submit ticket, message, or status
+    App->>App: Validate input
+    App->>DB: Execute parameterized SQL
+    DB-->>App: Commit result
+    App-->>User: Redirect to refreshed view
+```
+
+## Technology
+
+| Layer | Technology | Responsibility |
+| --- | --- | --- |
+| Hosting | Databricks Apps | Runs and exposes the web application |
+| Backend | Python and Flask | Routing, validation, rendering, and database operations |
+| Database | Databricks Lakebase (PostgreSQL) | Transactional ticket and message storage |
+| Database driver | psycopg2 | PostgreSQL connections and parameterized queries |
+| Secrets | Databricks secret scopes | Supplies the database URL at runtime |
+| Frontend | Jinja, HTML, and CSS | Responsive server-rendered interface |
+
+## Repository structure
+
+```text
+.
+â”œâ”€â”€ app.py                 # Routes, validation, schema initialization, seed data
+â”œâ”€â”€ lakebase.py            # Secure Lakebase connection helper
+â”œâ”€â”€ app.yaml               # Databricks Apps command and environment configuration
+â”œâ”€â”€ requirements.txt       # Python dependencies
+â”œâ”€â”€ .env.example           # Safe local configuration template
+â”œâ”€â”€ static/
+â”‚   â””â”€â”€ styles.css         # Responsive application styling
+â””â”€â”€ templates/
+    â”œâ”€â”€ base.html          # Shared page shell and notifications
+    â”œâ”€â”€ index.html         # Ticket list, filters, statistics, creation form
+    â””â”€â”€ ticket.html        # Conversation view and ticket update forms
+```
+
+## Application operations
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | List tickets, status filters, and statistics |
+| `GET` | `/tickets/<ticket_id>` | Display one ticket and its messages |
+| `POST` | `/tickets` | Create a ticket |
+| `POST` | `/tickets/<ticket_id>/messages` | Add a message |
+| `POST` | `/tickets/<ticket_id>/status` | Update ticket status |
+| `GET` | `/healthz` | Return application health information |
+
+## Database initialization
+
+At application startup, `initialize_database()` performs three idempotent operations:
+
+1. Creates the two tables and message lookup index with `IF NOT EXISTS`.
+2. Checks whether the `tickets` table contains any rows.
+3. Inserts three tickets and two messages per ticket only when the table is empty.
+
+Existing records are not replaced during restarts or redeployments.
+
+## Deploy to Databricks Apps
+
+### Prerequisites
+
+- A Databricks workspace with Databricks Apps and Lakebase available
+- A Lakebase database and a role permitted to connect and create objects in the target schema
+- A PostgreSQL connection URL stored in a Databricks secret
+- Permission for the deployed application identity to read that secret
+
+The default configuration expects:
+
+| Setting | Value |
+| --- | --- |
+| Secret scope | `database` |
+| Secret key | `lakebase-url` |
+
+To use different names, update `LAKEBASE_SECRET_SCOPE` and `LAKEBASE_SECRET_KEY` in `app.yaml`. Do not place the connection URL itself in that file.
+
+### Deployment
+
+1. Import or clone this repository into a Databricks Git folder.
+2. Create a Custom app from the Databricks Apps interface.
+3. Select the repository folder containing `app.py` and `app.yaml` as the source.
+4. Grant the application identity access to the configured secret and Lakebase database.
+5. Deploy the app and inspect its logs until startup completes.
+6. Open the generated application URL and create a ticket to verify write access.
+
+The application listens on the port supplied by `DATABRICKS_APP_PORT`, defaulting to port `8000` for local use.
+
+## Run locally
+
+Create an isolated Python environment and install the dependencies:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Put the Lakebase URL in .env; do not commit it.
+```
+
+Set `LAKEBASE_URL` in the untracked `.env` file, then start the application:
+
+```bash
 python app.py
 ```
 
-Open `http://localhost:8000`. Local development connects to the same Lakebase database, so use a development database if you do not want to alter the deployed data.
+Open [http://localhost:8000](http://localhost:8000). Local execution writes to the database specified by `LAKEBASE_URL`; use a development database when production data must remain isolated.
 
-## Verify before submission
+## Verify the database
 
-Use this checklist in the deployed app:
-
-- [ ] The three sample tickets load.
-- [ ] Every sample ticket has two messages.
-- [ ] Create a new ticket, then refresh; it remains.
-- [ ] Add a message, then refresh; it remains.
-- [ ] Change the ticket status, then refresh; it remains.
-- [ ] Try a status filter and confirm the statistics.
-- [ ] Capture one screenshot of the app.
-
-For the database screenshot, open the Lakebase SQL editor and run:
+These queries can be run from a Lakebase-compatible SQL editor:
 
 ```sql
-SELECT * FROM tickets ORDER BY ticket_id;
+SELECT *
+FROM tickets
+ORDER BY ticket_id;
 
-SELECT * FROM ticket_messages ORDER BY ticket_id, created_at;
+SELECT *
+FROM ticket_messages
+ORDER BY ticket_id, created_at;
 ```
 
-Capture the table browser/results showing both table names and sample rows. Do not include the connection URL or credentials in screenshots.
+To summarize ticket activity:
 
-## Submission package
+```sql
+SELECT
+    t.ticket_id,
+    t.title,
+    t.status,
+    t.priority,
+    COUNT(m.message_id) AS message_count
+FROM tickets AS t
+LEFT JOIN ticket_messages AS m
+    ON m.ticket_id = t.ticket_id
+GROUP BY t.ticket_id
+ORDER BY t.created_at DESC;
+```
 
-Submit:
+## Security notes
 
-1. The Databricks App URL (make sure instructor access is enabled).
-2. This source folder as a ZIP.
-3. A deployed-app screenshot.
-4. A Lakebase tables/sample-data screenshot.
-5. A 3–5 sentence reflection.
+- Never commit `.env`, passwords, connection URLs, API keys, or access tokens.
+- Keep `sslmode=require` in the PostgreSQL connection URL.
+- Grant the application identity only the database and secret permissions it needs.
+- User-provided SQL values are passed separately from SQL statements through psycopg2 parameters.
+- The application uses server-side validation in addition to browser form constraints.
 
-Example reflection—edit it so it is true to your experience:
+## Possible extensions
 
-> The most difficult part was connecting the deployed app identity securely to Lakebase and confirming that it could read the Databricks secret. Lakebase differs from a traditional analytics table because it is an operational Postgres database designed for low-latency row-level inserts and updates, transactions, and relationships such as foreign keys. Analytics tables are usually optimized for large scans and batch transformations rather than interactive application writes. Next, I would add authentication and assign tickets to specific support agents.
+- User authentication and ticket ownership
+- Agent assignment and team queues
+- Categories, tags, and service-level targets
+- Search and pagination
+- File attachments
+- Email or Slack notifications
+- Audit history for status changes
+- Soft deletion with a confirmation workflow
+- AI-generated ticket summaries and suggested responses
+- Lakebase Change Data Feed into analytics dashboards
 
 ## Troubleshooting
 
-- **App starts, then fails immediately:** inspect app logs; confirm `database/lakebase-url` exists and the app identity can read it.
-- **Connection refused/SSL error:** regenerate or recopy the full connection URL and retain `sslmode=require`.
-- **Permission denied creating tables:** use a Lakebase role with `CREATE` on the target schema, or have the schema owner run the SQL in `SCHEMA_SQL` once.
-- **Existing Day 1 tables are present:** that is fine; this app creates only `tickets`, `ticket_messages`, and one index.
-- **Free Edition option missing:** product availability can vary by workspace. Confirm that the same Lakebase instance and Apps features used for Day 1 are still visible before creating anything new.
+| Symptom | What to check |
+| --- | --- |
+| App fails during startup | Confirm the secret exists and the app identity can read it |
+| PostgreSQL connection or SSL error | Verify the complete connection URL and `sslmode=require` |
+| Permission denied while creating tables | Grant `CREATE` for the target schema or initialize the schema as its owner |
+| Tickets load but writes fail | Check the role's `INSERT` and `UPDATE` permissions |
+| Changes disappear after refresh | Confirm the app is connected to Lakebase rather than temporary or hard-coded data |
 
+## License
+
+No license has been selected. Add a license before redistributing or accepting external contributions.
