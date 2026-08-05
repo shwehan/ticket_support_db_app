@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div><p class="eyebrow">INTERNAL OPERATIONS</p><h1>Support tickets</h1><p>Track requests, conversations, and resolution progress.</p></div>
+  <button class="primary" onclick="document.getElementById('new-ticket').showModal()">+ New ticket</button>
+</section>
+
+<section class="stats">
+  <div><strong>{{ counts.values()|sum }}</strong><span>Total tickets</span></div>
+  <div><strong>{{ counts.get('open', 0) }}</strong><span>Open</span></div>
+  <div><strong>{{ counts.get('in_progress', 0) }}</strong><span>In progress</span></div>
+  <div><strong>{{ counts.get('resolved', 0) }}</strong><span>Resolved</span></div>
+</section>
+
+<nav class="filters">
+  {% for value, label in [('all','All'), ('open','Open'), ('in_progress','In progress'), ('resolved','Resolved')] %}
+    <a class="{{ 'active' if status_filter == value }}" href="{{ url_for('index', status=value) }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+
+<section class="ticket-list">
+  {% for ticket in tickets %}
+  <a class="ticket-card" href="{{ url_for('ticket_detail', ticket_id=ticket.ticket_id) }}">
+    <div class="ticket-main"><span class="ticket-id">#{{ ticket.ticket_id }}</span><h2>{{ ticket.title }}</h2><p>Created by {{ ticket.created_by }} · {{ ticket.created_at|friendly_time }}</p></div>
+    <div class="ticket-meta"><span class="pill status-{{ ticket.status }}">{{ ticket.status|replace('_',' ') }}</span><span class="pill priority-{{ ticket.priority }}">{{ ticket.priority }} priority</span><span>{{ ticket.message_count }} messages →</span></div>
+  </a>
+  {% else %}<div class="empty">No tickets match this filter.</div>{% endfor %}
+</section>
+
+<dialog id="new-ticket">
+  <form method="post" action="{{ url_for('create_ticket') }}">
+    <div class="dialog-head"><h2>Create a ticket</h2><button type="button" class="icon" onclick="this.closest('dialog').close()">×</button></div>
+    <label>Title<input name="title" maxlength="200" required placeholder="What needs help?"></label>
+    <label>Your name<input name="created_by" maxlength="100" required placeholder="Name"></label>
+    <label>Priority<select name="priority"><option>low</option><option selected>medium</option><option>high</option></select></label>
+    <div class="actions"><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancel</button><button class="primary">Create ticket</button></div>
+  </form>
+</dialog>
+{% endblock %}
+

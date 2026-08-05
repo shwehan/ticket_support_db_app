@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}#{{ ticket.ticket_id }} · Support Desk{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('index') }}">← All tickets</a>
+<section class="detail-head">
+  <div><p class="eyebrow">TICKET #{{ ticket.ticket_id }}</p><h1>{{ ticket.title }}</h1><p>Created by {{ ticket.created_by }} · {{ ticket.created_at|friendly_time }}</p></div>
+  <div class="badges"><span class="pill priority-{{ ticket.priority }}">{{ ticket.priority }} priority</span></div>
+</section>
+
+<section class="detail-grid">
+  <div class="panel conversation">
+    <h2>Conversation <span>{{ messages|length }}</span></h2>
+    {% for message in messages %}
+      <article class="message"><div class="avatar">{{ message.author[0]|upper }}</div><div><header><strong>{{ message.author }}</strong><time>{{ message.created_at|friendly_time }}</time></header><p>{{ message.message_text }}</p></div></article>
+    {% else %}<div class="empty">No messages yet.</div>{% endfor %}
+    <form class="reply" method="post" action="{{ url_for('add_message', ticket_id=ticket.ticket_id) }}">
+      <h3>Add a message</h3><textarea name="message_text" required placeholder="Write an update…"></textarea><div class="reply-row"><input name="author" maxlength="100" required placeholder="Your name"><button class="primary">Send message</button></div>
+    </form>
+  </div>
+  <aside class="panel sidebar">
+    <h2>Ticket details</h2>
+    <form method="post" action="{{ url_for('update_status', ticket_id=ticket.ticket_id) }}">
+      <label>Status<select name="status">{% for status in statuses %}<option value="{{ status }}" {{ 'selected' if ticket.status == status }}>{{ status|replace('_',' ') }}</option>{% endfor %}</select></label>
+      <button class="primary full">Update status</button>
+    </form>
+    <dl><dt>Priority</dt><dd>{{ ticket.priority|title }}</dd><dt>Created by</dt><dd>{{ ticket.created_by }}</dd><dt>Created</dt><dd>{{ ticket.created_at|friendly_time }}</dd></dl>
+  </aside>
+</section>
+{% endblock %}
+
