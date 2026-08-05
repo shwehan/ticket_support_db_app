@@ -1,9 +1,7 @@
 """One-time setup for the Lakebase connection secret.
 
 This follows the prompt-and-store pattern used by the Databricks Lakebase
-example. Run it from a Databricks notebook terminal or from a computer with
-Databricks authentication configured. The URL is hidden while pasted and is
-never written to a local file.
+example. The URL is hidden while pasted and is never written to a local file.
 
 Usage:
     python setup_secrets.py
@@ -21,17 +19,12 @@ SECRET_KEY = "lakebase-url"
 
 
 def validate_lakebase_url(value: str) -> None:
-    """Fail early when a connection URL cannot work with static auth."""
+    """Validate the URL shape without changing or shortening its value."""
     parsed = urlparse(value)
     if parsed.scheme not in {"postgres", "postgresql"}:
         raise ValueError("URL must begin with postgres:// or postgresql://")
     if not parsed.username:
         raise ValueError("URL must include a PostgreSQL username")
-    if not parsed.password:
-        raise ValueError(
-            "URL must include a password. Choose a native PostgreSQL password "
-            "role rather than a passwordless OAuth connection."
-        )
     if not parsed.hostname:
         raise ValueError("URL must include a database hostname")
     if not parsed.path or parsed.path == "/":
