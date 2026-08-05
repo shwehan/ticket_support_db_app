@@ -1,10 +1,15 @@
-"""Interactively store the Lakebase connection URL in Databricks Secrets.
+"""One-time setup for the Lakebase connection secret.
 
-The URL is collected with getpass, so it is not echoed to the terminal or
-written to a file. Run this script from an authenticated Databricks environment.
+This follows the prompt-and-store pattern used by the Databricks Lakebase
+example. Run it from a Databricks notebook terminal or from a computer with
+Databricks authentication configured. The URL is hidden while pasted and is
+never written to a local file.
+
+Usage:
+    python setup_secrets.py
 """
 
-from getpass import getpass
+import getpass
 from urllib.parse import parse_qs, urlparse
 
 from databricks.sdk import WorkspaceClient
@@ -15,48 +20,48 @@ SECRET_SCOPE = "ticket-support"
 SECRET_KEY = "lakebase-url"
 
 
-def prompt_for_lakebase_url() -> str:
-    value = getpass("Paste the Lakebase PostgreSQL URL (input hidden): ").strip()
+def validate_lakebase_url(value: str) -> None:
+    """Fail early when a connection URL cannot work with static auth."""
     parsed = urlparse(value)
-
     if parsed.scheme not in {"postgres", "postgresql"}:
-        raise ValueError("The URL must begin with postgres:// or postgresql://")
+        raise ValueError("URL must begin with postgres:// or postgresql://")
+    if not parsed.username:
+        raise ValueError("URL must include a PostgreSQL username")
+    if not parsed.password:
+        raise ValueError(
+            "URL must include a password. Choose a native PostgreSQL password "
+            "role rather than a passwordless OAuth connection."
+        )
     if not parsed.hostname:
-        raise ValueError("The URL must include a database hostname")
+        raise ValueError("URL must include a database hostname")
     if not parsed.path or parsed.path == "/":
-        raise ValueError("The URL must include a database name")
+        raise ValueError("URL must include a database name")
     if parse_qs(parsed.query).get("sslmode") != ["require"]:
-        raise ValueError("The URL must include ?sslmode=require")
-
-    return value
+        raise ValueError("URL must include ?sslmode=require")
 
 
-def ensure_scope(client: WorkspaceClient) -> None:
-    try:
-        client.secrets.create_scope(scope=SECRET_SCOPE)
-        print(f"Created secret scope: {SECRET_SCOPE}")
-    except DatabricksError as exc:
-        if getattr(exc, "error_code", None) != "RESOURCE_ALREADY_EXISTS":
-            raise
-        print(f"Using existing secret scope: {SECRET_SCOPE}")
+w = WorkspaceClient()
 
+try:
+    w.secrets.create_scope(scope=SECRET_SCOPE)
+    print(f"Created secret scope: {SECRET_SCOPE}")
+except DatabricksError as exc:
+    if getattr(exc, "error_code", None) != "RESOURCE_ALREADY_EXISTS":
+        raise
+    print(f"Using existing secret scope: {SECRET_SCOPE}")
 
-def main() -> None:
-    try:
-        lakebase_url = prompt_for_lakebase_url()
-    except ValueError as exc:
-        raise SystemExit(f"Invalid Lakebase URL: {exc}") from exc
+lakebase_url = getpass.getpass("Paste your Lakebase URL: ").strip()
 
-    client = WorkspaceClient()
-    ensure_scope(client)
-    client.secrets.put_secret(
-        scope=SECRET_SCOPE,
-        key=SECRET_KEY,
-        string_value=lakebase_url,
-    )
-    print(f"Saved Lakebase URL as {SECRET_SCOPE}/{SECRET_KEY}.")
-    print("The URL was not written to a local file.")
+try:
+    validate_lakebase_url(lakebase_url)
+except ValueError as exc:
+    raise SystemExit(f"Invalid Lakebase URL: {exc}") from exc
 
+w.secrets.put_secret(
+    scope=SECRET_SCOPE,
+    key=SECRET_KEY,
+    string_value=lakebase_url,
+)
 
-if __name__ == "__main__":
-    main()
+print(f"Saved Lakebase URL as {SECRET_SCOPE}/{SECRET_KEY}.")
+print("In the app's Authorization tab, add this secret with Can read access.")
