@@ -87,17 +87,17 @@ sequenceDiagram
 
 ```text
 .
-â”œâ”€â”€ app.py                 # Routes, validation, schema initialization, seed data
-â”œâ”€â”€ lakebase.py            # Secure Lakebase connection helper
-â”œâ”€â”€ app.yaml               # Databricks Apps command and environment configuration
-â”œâ”€â”€ requirements.txt       # Python dependencies
-â”œâ”€â”€ .env.example           # Safe local configuration template
-â”œâ”€â”€ static/
-â”‚   â””â”€â”€ styles.css         # Responsive application styling
-â””â”€â”€ templates/
-    â”œâ”€â”€ base.html          # Shared page shell and notifications
-    â”œâ”€â”€ index.html         # Ticket list, filters, statistics, creation form
-    â””â”€â”€ ticket.html        # Conversation view and ticket update forms
+├── app.py                 # Routes, validation, schema initialization, seed data
+├── lakebase.py            # Secure Lakebase connection helper
+├── app.yaml               # Databricks Apps command and environment configuration
+├── requirements.txt       # Python dependencies
+├── .env.example           # Safe local configuration template
+├── static/
+│   └── styles.css         # Responsive application styling
+└── templates/
+    ├── base.html          # Shared page shell and notifications
+    ├── index.html         # Ticket list, filters, statistics, creation form
+    └── ticket.html        # Conversation view and ticket update forms
 ```
 
 ## Application operations
